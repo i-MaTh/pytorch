@@ -135,7 +135,7 @@ class CudaTransfer(Function):
     def forward(ctx, i, device_id=None, async=False):
         ctx.source_device = -1 if not i.is_cuda else i.get_device()
         ctx.source_was_cuda = i.is_cuda
-        if device_id:
+        if device_id is not None:
             return i.cuda(device_id, async=async)
         else:
             return i.cuda(async=async)
@@ -363,17 +363,17 @@ class Unsqueeze(Function):
         return grad_output.squeeze(ctx.dim), None
 
 
-class MaskedCopy(InplaceFunction):
+class MaskedScatter(InplaceFunction):
 
     @staticmethod
     def forward(ctx, tensor1, mask, tensor2, inplace=False):
-        assert not ctx.needs_input_grad[1], "MaskedCopy can't differentiate the mask"
+        assert not ctx.needs_input_grad[1], "MaskedScatter can't differentiate the mask"
         if not inplace:
             tensor1 = tensor1.clone()
         else:
             ctx.mark_dirty(tensor1)
         ctx.save_for_backward(mask)
-        return tensor1.masked_copy_(mask, tensor2)
+        return tensor1.masked_scatter_(mask, tensor2)
 
     @staticmethod
     @once_differentiable
@@ -425,7 +425,7 @@ class MaskedSelect(Function):
         grad_tensor = None
         if ctx.needs_input_grad[0]:
             grad_tensor = grad_output.new(ctx.input_size).zero_()
-            grad_tensor.masked_copy_(mask, grad_output)
+            grad_tensor.masked_scatter_(mask, grad_output)
         return grad_tensor, None
 
 
@@ -508,7 +508,7 @@ class Gather(Function):
     def backward(ctx, grad_output):
         index, = ctx.saved_tensors
         grad_input = grad_output.new(ctx.input_size).zero_()
-        return grad_input.scatter_(ctx.dim, index, grad_output), None, None
+        return grad_input.scatter_add_(ctx.dim, index, grad_output), None, None
 
 
 class Scatter(InplaceFunction):
